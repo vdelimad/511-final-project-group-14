@@ -1,0 +1,602 @@
+---
+title: "data_testing"
+author: "Victor De Lima"
+date: "2022-11-29"
+output: html_document
+---
+
+
+
+Data Science question: 
+What are the variables contributing to the prediction of median days on market in the properties in the DC, Virginia and Maryland areas?
+
+
+
+
+Bring in the data
+
+```{r}
+
+inventory_core_metrics_raw <-read.csv("./data/RDC_Inventory_Core_Metrics_Zip.csv")
+
+head(inventory_core_metrics_raw)
+
+```
+
+Cleaning
+
+### Inventory Core Metrics
+
+
+```{r}
+# Remove last row containing dataset description
+inventory_core_metrics_clean <- head(inventory_core_metrics_raw, - 1)
+```
+
+```{r}
+#Verify only a single time period is present
+print("Time periods present:")
+length(unique(inventory_core_metrics_clean$month_date_yyyymm ))
+table(inventory_core_metrics_clean$month_date_yyyymm)
+
+#Verify all post codes appear just once
+print("Post Codes All Unique:")
+length(unique(inventory_core_metrics_clean$postal_code)) == sum(table(inventory_core_metrics_clean$postal_code))
+
+```
+
+```{r}
+# Remove month over month and year over year columns
+inventory_core_metrics_clean = subset(inventory_core_metrics_clean, select = -c(
+  median_listing_price_mm,
+  #active_listing_count_yy,
+  price_increased_count_mm,
+  #price_reduced_count_yy,
+  median_square_feet_mm,
+  #average_listing_price_yy,
+  #median_listing_price_yy,
+  new_listing_count_mm,
+  #price_increased_count_yy,
+  median_listing_price_per_square_foot_mm,
+  #median_square_feet_yy,
+  pending_ratio_mm,
+  median_days_on_market_mm,
+  #new_listing_count_yy,
+  pending_listing_count_mm,
+  #median_listing_price_per_square_foot_yy,
+  total_listing_count_mm,
+  #pending_ratio_yy,
+  active_listing_count_mm,
+  #median_days_on_market_yy,
+  price_reduced_count_mm,
+  #pending_listing_count_yy,
+  average_listing_price_mm
+  #total_listing_count_yy
+))
+
+```
+
+
+
+```{r}
+#inventory_core_metrics_test <- inventory_core_metrics[inventory_core_metrics$postal_code %in% dc_zip_codes, ]
+
+# regions
+dc_metarea <- c(', dc', ', va',', md')
+
+inventory_core_metrics_dcvamd <- inventory_core_metrics_clean[
+  grep(paste(dc_metarea,collapse="|"), inventory_core_metrics_clean$zip_name), ]
+
+inventory_core_metrics_dcvamd
+
+```
+
+
+```{r}
+
+# Remove categorical columns
+inventory_core_metrics = subset(inventory_core_metrics_dcvamd, select = -c(
+  month_date_yyyymm,
+  postal_code,
+  zip_name
+  
+))
+
+head(inventory_core_metrics)
+
+```
+
+
+EDA
+
+```{r}
+str(inventory_core_metrics)
+
+```
+
+```{r}
+# Check amount of NAs
+sapply(inventory_core_metrics, function(y) sum(length(which(is.na(y)))))
+
+```
+
+
+```{r}
+# Drop columns with excessive missingness
+inventory_core_metrics <- subset(inventory_core_metrics, select = -c(
+  pending_listing_count,
+  pending_ratio,
+  price_increased_count_yy,
+  price_reduced_count_yy,
+  new_listing_count_yy,
+  pending_listing_count_yy,
+  pending_ratio_yy,
+  median_days_on_market_yy, # this is the dependent variable
+  median_listing_price_yy # showed multicollinearity
+
+))
+
+# Drop other missing values
+#inventory_core_metrics <- inventory_core_metrics[!is.na(inventory_core_metrics$median_days_on_market),]
+inventory_core_metrics <- na.omit(inventory_core_metrics)
+
+
+```
+
+
+
+```{r}
+# Check amount of NAs
+sapply(inventory_core_metrics, function(y) sum(length(which(is.na(y)))))
+
+```
+
+
+
+```{r}
+dim(inventory_core_metrics)
+
+```
+
+
+Some variables may be insignificant in groups but significant when alone with the dependent variable. This happens when the correlation between X's is high. 
+
+
+```{r}
+library(ggcorrplot)
+
+corr <- cor(inventory_core_metrics)
+corr
+ggcorrplot(corr)
+```
+
+
+
+
+```{r}
+# Drop columns with excessive missingness
+inventory_core_metrics <- subset(inventory_core_metrics, select = -c(
+  total_listing_count,
+  average_listing_price,
+  price_reduced_count,
+  new_listing_count
+
+))
+
+# Check correlations again
+
+corr <- cor(inventory_core_metrics)
+corr
+ggcorrplot(corr)
+
+```
+
+
+```{r}
+dim(inventory_core_metrics)
+
+```
+
+
+
+Create training and testing sets:
+
+```{r}
+# Reference: class material
+library(caret)
+set.seed(123)
+
+training_samples <- createDataPartition(inventory_core_metrics$median_days_on_market, p = 0.8, list = FALSE)
+
+inventory_core_metrics_train  <- inventory_core_metrics[training_samples, ]
+inventory_core_metrics_test <- inventory_core_metrics[-training_samples, ]
+dim(inventory_core_metrics_train)
+dim(inventory_core_metrics_test)
+
+```
+
+
+
+Fitting the full regression:
+
+
+```{r}
+# Reference: class material
+options(scipen=999)
+
+
+regression_1 = lm(median_days_on_market~.,data=inventory_core_metrics_train)
+regression_1_summary <- summary(regression_1)
+regression_1_summary
+```
+
+Before going forward, let's check for multicollinearity to know if we have correlation between variables that can affect the regression fit. We use the Variance Inflation factor (VIF):
+
+```{r}
+
+library(car)
+
+vif(regression_1)
+
+```
+
+
+```{r}
+
+# Check interactions:
+regression_1_interactions <- lm(median_days_on_market~(median_listing_price + active_listing_count + active_listing_count_yy  + price_increased_count + median_listing_price_per_square_foot + median_listing_price_per_square_foot_yy + median_square_feet + median_square_feet_yy + average_listing_price_yy + total_listing_count_yy + quality_flag)^2, data=inventory_core_metrics_train)
+summary(regression_1_interactions)
+
+
+
+```
+
+
+Insignificant variables:
+
+median_listing_price
+
+```{r, message=FALSE, warning=FALSE}
+# median_listing_price
+library(ggplot2)
+ggplot(data = inventory_core_metrics_train, aes(y = median_days_on_market, x = median_listing_price)) + 
+  geom_point() + 
+  labs(x = "Median Listing Price", y = "Median Days on Market", title = "Median Days on Market vs Median Listing Price") + 
+  geom_smooth(method = 'lm') + 
+  scale_y_continuous(limits = c(0, 200)) + 
+  scale_x_continuous(limits = c(0, 1000000))
+
+```
+
+active_listing_count
+
+```{r, message=FALSE, warning=FALSE}
+# active_listing_count
+ggplot(data = inventory_core_metrics_train, aes(y = median_days_on_market, x = active_listing_count)) + 
+  geom_point() + 
+  labs(x = "Active Listing Count", y = "Median Days on Market", title = "Median Days on Market vs Active Listing Count") + 
+  geom_smooth(method = 'lm') + 
+  scale_y_continuous(limits = c(0, 200)) + 
+  scale_x_continuous(limits = c(0, 100))
+```
+
+```{r}
+inventory_core_metrics_train_without_0_alc = inventory_core_metrics_train[inventory_core_metrics_train$active_listing_count != 0, ]
+check_alc <- lm(median_days_on_market ~ log(active_listing_count), data = inventory_core_metrics_train_without_0_alc)
+summary(check_alc)
+```
+
+```{r, message=FALSE, warning=FALSE}
+# log(active_listing_count)
+ggplot(data = inventory_core_metrics_train, aes(y = median_days_on_market, x = log(active_listing_count))) + 
+  geom_point() + 
+  labs(x = "Log of Active Listing Count", y = "Median Days on Market", title = "Median Days on Market vs Log of Active Listing Count") + 
+  geom_smooth(method = 'lm')
+```
+
+
+median_days_on_market_yy
+
+
+price_increased_count
+
+```{r, message=FALSE, warning=FALSE}
+# price_increased_count
+ggplot(data = inventory_core_metrics_train, aes(y = median_days_on_market, x = price_increased_count)) + 
+  geom_point() + 
+  geom_smooth(method = 'lm') + 
+  labs(x = "Price Increased Count", y = "Median Days on Market", title = "Median Days on Market vs Price Increased Count")
+```
+```{r}
+check_pic <- lm(median_days_on_market ~ price_increased_count, data = inventory_core_metrics_train)
+summary(check_pic)
+```
+
+median_listing_price_per_square_foot
+
+```{r, message=FALSE, warning=FALSE}
+# median_listing_price_per_square_foot
+ggplot(data = inventory_core_metrics_train, aes(y = median_days_on_market, x = median_listing_price_per_square_foot)) + 
+  geom_point() + 
+  geom_smooth(method = 'lm') + 
+  labs(x = "Median Listing Price per Square Foot", y = "Median Days on Market", title = "Median Days on Market vs Median Listing Price per Square Foot") +
+  scale_y_continuous(limits = c(0, 300)) + 
+  scale_x_continuous(limits = c(0, 700))
+```
+
+median_listing_price_per_square_foot_yy
+
+```{r, message=FALSE, warning=FALSE}
+# median_listing_price_per_square_foot_yy
+ggplot(data = inventory_core_metrics_train, aes(y = median_days_on_market, x = median_listing_price_per_square_foot_yy)) + 
+  geom_point() + 
+  geom_smooth(method = 'lm') + 
+  labs(x = "Median Listing Price per Square Foot yy", y = "Median Days on Market", title = "Median Days on Market vs Median Listing Price per Square Foot yy") +
+  scale_y_continuous(limits = c(0, 200)) + 
+  scale_x_continuous(limits = c(0, 2))
+```
+
+median_square_feet_yy
+
+```{r, message=FALSE, warning=FALSE}
+# median_square_feet_yy
+ggplot(data = inventory_core_metrics_train, aes(y = median_days_on_market, x = median_square_feet_yy)) + 
+  geom_point() + 
+  geom_smooth(method = 'lm') + 
+  labs(x = "Median Square Feet yy", y = "Median Days on Market", title = "Median Days on Market vs Median Square Feet yy") +
+  scale_y_continuous(limits = c(0, 200)) + 
+  scale_x_continuous(limits = c(0, 2))
+```
+
+
+
+```{r, message=FALSE, warning=FALSE}
+# active_listing_count
+ggplot(data = inventory_core_metrics_train, aes(y = median_days_on_market, x = active_listing_count_yy)) + 
+  geom_point() + 
+  labs(x = "Active Listing Count yy", y = "Median Days on Market", title = "Median Days on Market vs Active Listing Count yy") + 
+  geom_smooth(method = 'lm') +
+  scale_y_continuous(limits = c(0, 300)) + 
+  scale_x_continuous(limits = c(0, 4))
+```
+
+median_square_feet
+
+```{r, message=FALSE, warning=FALSE}
+# median_square_feet
+ggplot(data = inventory_core_metrics_train, aes(y = median_days_on_market, x = median_square_feet)) + 
+  geom_point() + 
+  geom_smooth(method = 'lm') + 
+  labs(x = "Median Square Feet", y = "Median Days on Market", title = "Median Days on Market vs Median Square Feet") +
+  scale_y_continuous(limits = c(0, 300)) + 
+  scale_x_continuous(limits = c(0, 5000))
+```
+
+average_listing_price_yy
+
+```{r, message=FALSE, warning=FALSE}
+# average_listing_price_yy
+ggplot(data = inventory_core_metrics_train, aes(y = median_days_on_market, x = average_listing_price_yy)) + 
+  geom_point() + 
+  geom_smooth(method = 'lm') + 
+  labs(x = "Average Listing Price yy", y = "Median Days on Market", title = "Median Days on Market vs Average Listing Price yy") +
+  scale_y_continuous(limits = c(0, 200)) + 
+  scale_x_continuous(limits = c(0, 2))
+```
+
+total_listing_count_yy
+
+```{r, message=FALSE, warning=FALSE}
+# total_listing_count_yy
+ggplot(data = inventory_core_metrics_train, aes(y = median_days_on_market, x = total_listing_count_yy)) + 
+  geom_point() + 
+  geom_smooth(method = 'lm') + 
+  labs(x = "Total Listing Count yy", y = "Median Days on Market", title = "Median Days on Market vs Total Listing Count yy") +
+  scale_y_continuous(limits = c(0, 300)) + 
+  scale_x_continuous(limits = c(0, 2.5))
+```
+
+
+
+
+
+```{r}
+inventory_core_metrics_train_without_0_alc = inventory_core_metrics_train[inventory_core_metrics_train$active_listing_count != 0, ]
+check_alc <- lm(median_days_on_market ~ log(active_listing_count) + ., data = inventory_core_metrics_train_without_0_alc)
+summary(check_alc)
+```
+
+
+
+
+
+```{r}
+# Reference: class material
+regression_data_1 <- subset(inventory_core_metrics_train, select = -c(median_listing_price, price_increased_count, median_listing_price_per_square_foot, median_listing_price_per_square_foot_yy, median_square_feet_yy, total_listing_count_yy, average_listing_price_yy))
+
+regression_data_1 <- lm(median_days_on_market~.,data=regression_data_1)
+
+regression_summary_1 <- summary(regression_data_1)
+regression_summary_1
+```
+
+
+
+
+
+```{r}
+# Reference: class material
+regression_data_2 <- lm(median_days_on_market~
+
+median_listing_price                                        +
+active_listing_count                                        +
+active_listing_count_yy                                     +
+price_increased_count                                       +
+median_listing_price_per_square_foot                        +
+median_listing_price_per_square_foot_yy                     +
+median_square_feet                                          +
+median_square_feet_yy                                       +
+average_listing_price_yy                                    +
+total_listing_count_yy                                      +
+quality_flag                                                +
+median_listing_price*active_listing_count_yy                +
+median_listing_price*median_listing_price_per_square_foot_yy+
+median_listing_price*total_listing_count_yy                 +
+active_listing_count_yy*median_listing_price_per_square_foot+
+median_listing_price_per_square_foot*median_square_feet     +
+median_listing_price_per_square_foot*total_listing_count_yy +
+median_square_feet*median_square_feet_yy                    +
+median_square_feet*average_listing_price_yy                 
+
+, data=inventory_core_metrics_train)
+
+regression_summary_2 <- summary(regression_data_2)
+regression_summary_2
+
+```
+
+Let's also try having interaction terms and removing insignificant variables, as permissible by the hierarchy principle.
+
+```{r}
+# Reference: class material
+regression_data_3 <- lm(median_days_on_market~
+
+median_listing_price                                        +
+active_listing_count                                        +
+active_listing_count_yy                                     +
+median_listing_price_per_square_foot                        +
+median_listing_price_per_square_foot_yy                     +
+median_square_feet                                          +
+median_square_feet_yy                                       +
+total_listing_count_yy                                      +
+quality_flag                                                +
+median_listing_price*active_listing_count_yy                +
+median_listing_price*median_listing_price_per_square_foot_yy+
+median_listing_price*total_listing_count_yy                 +
+active_listing_count_yy*median_listing_price_per_square_foot+
+median_listing_price_per_square_foot*median_square_feet     +
+median_listing_price_per_square_foot*total_listing_count_yy +
+median_square_feet*median_square_feet_yy 
+
+, data=inventory_core_metrics_train)
+
+regression_summary_3 <- summary(regression_data_3)
+regression_summary_3
+
+```
+
+
+```{r}
+# Reference: class material
+regression_data_4 <- lm(median_days_on_market~
+
+median_listing_price                                        +
+log(active_listing_count)                                   +
+active_listing_count_yy                                     +
+median_listing_price_per_square_foot                        +
+median_listing_price_per_square_foot_yy                     +
+median_square_feet                                          +
+median_square_feet_yy                                       +
+total_listing_count_yy                                      +
+quality_flag                                                +
+median_listing_price*active_listing_count_yy                +
+median_listing_price*median_listing_price_per_square_foot_yy+
+median_listing_price*total_listing_count_yy                 +
+active_listing_count_yy*median_listing_price_per_square_foot+
+median_listing_price_per_square_foot*median_square_feet     +
+median_listing_price_per_square_foot*total_listing_count_yy +
+median_square_feet*median_square_feet_yy 
+
+, data=inventory_core_metrics_train_without_0_alc)
+
+regression_summary_4 <- summary(regression_data_4)
+regression_summary_4
+
+```
+
+
+Getting $R^2$, $RSE$, $RMSE$ and $F-statistic$:
+
+```{r, warning=FALSE, message=FALSE}
+library(tidyverse)
+
+# Original
+predictions0 <- regression_1 %>% predict(inventory_core_metrics_test)
+original <- c(
+regression_1_summary$adj.r.squared,
+regression_1_summary$sigma,
+regression_1_summary$fstatistic[1],
+RMSE(predictions0, inventory_core_metrics_test$danceability)
+)
+
+# Model 1
+predictions1 <- regression_data_1 %>% predict(inventory_core_metrics_test)
+model_1 <- c(
+regression_summary_1$adj.r.squared,
+regression_summary_1$sigma,
+regression_summary_1$fstatistic[1],
+RMSE(predictions1, inventory_core_metrics_test$median_days_on_market)
+)
+
+# Model 2
+predictions2 <- regression_data_2 %>% predict(inventory_core_metrics_test)
+model_2 <- c(
+regression_summary_2$adj.r.squared,
+regression_summary_2$sigma,
+regression_summary_2$fstatistic[1],
+RMSE(predictions2, inventory_core_metrics_test$median_days_on_market)
+)
+
+# Model 3
+predictions3 <- regression_data_3 %>% predict(inventory_core_metrics_test)
+model_3 <- c(
+regression_summary_3$adj.r.squared,
+regression_summary_3$sigma,
+regression_summary_3$fstatistic[1],
+RMSE(predictions3, inventory_core_metrics_test$median_days_on_market)
+)
+
+# Model 4
+inventory_core_metrics_test_without_0_alc = inventory_core_metrics_test[inventory_core_metrics_test$active_listing_count != 0, ]
+predictions4 <- regression_data_4 %>% predict(inventory_core_metrics_test_without_0_alc)
+model_4 <- c(
+regression_summary_4$adj.r.squared,
+regression_summary_4$sigma,
+regression_summary_4$fstatistic[1],
+RMSE(predictions4, inventory_core_metrics_test_without_0_alc$median_days_on_market)
+)
+
+column_names <- c('Adj R Squared', 'RSE', 'F Statistic', 'RMSE')
+eval_table <- rbind(original, model_1, model_2, model_3, model_4)
+colnames(eval_table) <- column_names
+eval_table
+
+```
+
+
+When comparing the original models, Model 3 is better in most used metrics. 
+
+```{r}
+par(mfrow=c(2,2))
+plot(regression_data_3)
+```
+
+However, with the log term, we can obtain a slightly better result.
+
+```{r}
+par(mfrow=c(2,2))
+plot(regression_data_4)
+```
+
+
+
+
+```{r}
+anova(regression_data_1, regression_data_2)
+```
+
+```{r}
+anova(regression_data_2, regression_data_3)
+```
+
+
