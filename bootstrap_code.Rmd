@@ -1,0 +1,131 @@
+---
+title: "Bootstrap"
+output: rmdformats::robobook
+date: "2022-12-6"
+---
+
+```{r}
+library('ggplot2')
+```
+
+```{r}
+df.state.history <- read.csv('data/RDC_Inventory_Core_Metrics_State_History.csv')
+df.DC <- df.state.history[df.state.history$state_id=='DC',]
+```
+
+# Check outliers using boxplots
+
+```{r}
+#png('Boxplot of Average Listing Price.png',bg='transparent')
+boxplot(df.DC$average_listing_price, ylab = "Average listing price")
+#dev.off()
+
+#png('Boxplot of Median Listing Price per square foot.png',bg='transparent')
+boxplot(df.DC$median_listing_price_per_square_foot, ylab = "Median Listing Price per square foot")
+#dev.off()
+```
+
+# Delete outlier
+
+```{r}
+max.avg.price <- max(df.DC$average_listing_price)
+print(max.avg.price)
+df.DC <- df.DC[df.DC$average_listing_price!=max.avg.price,]
+```
+```{r}
+df.DC$year = substr(df.DC$month_date_yyyymm,1,4)
+```
+
+# Check distribution of average_listing_price before and after pandemic
+
+```{r}
+#png('Distribution of Average Listing Price (2016-2019).png',bg='transparent')
+hist(df.DC$average_listing_price[which(df.DC$year<=2019)],prob=T,main='Distribution of Average Listing Price (2016-2019)',xlab='Average Listing Price')
+#dev.off()
+
+#png('Distribution of Average Listing Price (2020-2022).png',bg='transparent')
+hist(df.DC$average_listing_price[which(df.DC$year>2019)],prob=T,main='Distribution of Average Listing Price (2020-2022)',xlab='Average Listing Price')
+#dev.off()
+```
+
+# Check distribution of Median Listing Price/sqft before and after pandemic
+
+```{r}
+#png('Distribution of Median Listing Price per square foot (2016-2019).png',bg='transparent')
+hist(df.DC$median_listing_price_per_square_foot[which(df.DC$year<=2019)],prob=T,main='Distribution of Median Listing Price per square foot (2016-2019)',xlab='Median Listing Price (per square foot)')
+#dev.off()
+
+#png('Distribution of Median Listing Price per square foot (2020-2022).png',bg='transparent')
+hist(df.DC$median_listing_price_per_square_foot[which(df.DC$year>2019)],prob=T,main='Distribution of Median Listing Price per square foot (2020-2022)',xlab='Median Listing Price (per square foot)')
+#dev.off()
+```
+
+
+# Normality tests of average_listing_price before and after pandemic
+
+```{r}
+shapiro.test(df.DC$average_listing_price[which(df.DC$year<=2019)])
+shapiro.test(df.DC$average_listing_price[which(df.DC$year>2019)])
+```
+
+# Normality tests of median_listing_price_per_square_foot before and after pandemic
+
+```{r}
+shapiro.test(df.DC$median_listing_price_per_square_foot[which(df.DC$year<=2019)])
+shapiro.test(df.DC$median_listing_price_per_square_foot[which(df.DC$year>2019)])
+```
+
+# Bootstrap sample mean difference
+
+```{r}
+# average_listing_price
+N <- 10000
+diff.sample <- rep(NA,N)
+
+for (i in 1:N){
+  boot.sample.mean.before <- mean(sample(df.DC$average_listing_price[which(df.DC$year<=2019)], length(df.DC$average_listing_price[which(df.DC$year<=2019)]), replace=T))
+  
+  boot.sample.mean.after <- mean(sample(df.DC$average_listing_price[which(df.DC$year>2019)], length(df.DC$average_listing_price[which(df.DC$year>2019)]), replace=T))
+  
+  diff.sample[i] <- boot.sample.mean.after - boot.sample.mean.before
+}
+
+(diff.mean <- mean(diff.sample))
+
+(q.95 <- quantile(diff.sample, c(.025, .975)))
+```
+
+```{r}
+# median_listing_price_per_square_foot
+N <- 10000
+diff.sample1 <- rep(NA,N)
+
+for (i in 1:N){
+  boot.sample.mean.before1 <- mean(sample(df.DC$median_listing_price_per_square_foot[which(df.DC$year<=2019)], length(df.DC$median_listing_price_per_square_foot[which(df.DC$year<=2019)]), replace=T))
+  
+  boot.sample.mean.after1 <- mean(sample(df.DC$median_listing_price_per_square_foot[which(df.DC$year>2019)], length(df.DC$median_listing_price_per_square_foot[which(df.DC$year>2019)]), replace=T))
+  
+  diff.sample1[i] <- boot.sample.mean.after1 - boot.sample.mean.before1
+}
+
+(diff.mean1 <- mean(diff.sample1))
+
+(q.951 <- quantile(diff.sample1, c(.025, .975)))
+```
+
+# Distribution of sample mean diffences
+
+```{r}
+#png('Distribution of sample mean differences for Average Listing Price.png',bg='transparent')
+hist(diff.sample,prob=T,main='Distribution of sample mean diffences for Average Listing Price',xlab='Diffences')
+abline(v=c(q.95[1],diff.mean,q.95[2]),col=c('blue','green','red'))
+#dev.off()
+```
+
+```{r}
+#png('Distribution of sample mean diffences for median unit price.png',bg='transparent')
+hist(diff.sample1,prob=T,main='Distribution of sample mean diffences for median unit price',xlab='Diffences')
+abline(v=c(q.951[1],diff.mean1,q.951[2]),col=c('blue','green','red'))
+#dev.off()
+```
+
