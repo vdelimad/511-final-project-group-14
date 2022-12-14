@@ -1,0 +1,132 @@
+---
+output: rmdformats::robobook
+---
+
+```{r}
+# getwd()
+# setwd('C:/Users/GTU/ANLY_511_Probablity_Statistics/Project')
+# install.packages("tidyverse")
+# install.packages("funModeling")
+# install.packages("Hmisc")
+install.packages("pip install statsmodels")
+library(funModeling) 
+library(tidyverse) 
+library(Hmisc)
+library(dplyr)
+
+# Summary of the analysis
+summary(res.aov)
+```
+
+
+```{r}
+#load data
+
+data <- read.csv('data/RDC_Inventory_Core_Metrics_Zip_History.csv')
+
+hotness <- read.csv('data/RDC_Inventory_Hotness_Metrics_Zip_History.csv')
+ # slice into years
+hotness_l2y <- hotness[hotness['month_date_yyyymm']>=2021,c('month_date_yyyymm','zip_name','postal_code','hotness_score','median_days_on_market','median_days_on_market_yy',
+'supply_score','demand_score','median_listing_price','median_listing_price_yy')]
+
+hotness_l2y_dc <- hotness_l2y[hotness_l2y['zip_name']=='washington, dc',]
+hotness_l2y_dc_gp <- hotness_l2y_dc %>% group_by(postal_code) %>%
+                   summarise(mean_hotness_score = mean(hotness_score),
+                             mean_demand_hotness = mean(demand_score),
+                             mean_supply_hotness = mean(supply_score)
+                             )
+
+write.csv(hotness_l2y_dc, 'C:/Users/GTU/ANLY_511_Probablity_Statistics/Project/hotness.csv', row.names=FALSE)
+names(hotness_l2y_dc)
+
+data_dc <- data[data$zip_name=='washington, DC',]
+data_dc_l2y <- data_dc[data_dc$zip_name=='washington, DC' & data_dc$month_date_yyyymm>=202101,]
+names(data_dc_l2y)
+
+data_dc_hot_inventory_l2y <- merge(x=hotness_l2y_dc_gp, y=data_dc_l2y, by=c("postal_code"), all.X=True)
+names(data_dc_hot_inventory_l2y)
+
+data_dc_hot_inventory_l2y <- data_dc_hot_inventory_l2y[c('month_date_yyyymm','postal_code','mean_demand_hotness','mean_hotness_score','mean_supply_hotness',
+'median_listing_price_per_square_foot')]
+
+write.csv(data_dc_hot_inventory_l2y, 'C:/Users/GTU/ANLY_511_Probablity_Statistics/Project/data_dc_hot_inventory_l2y.csv', row.names=FALSE)
+
+```
+
+# EDA 
+```{r}
+# data type
+status(data)
+status(hotness)
+
+# box plot for outliers
+boxplot(data_2022$median_listing_price) # remove outliers above $2M
+data_2022_ro <- data_2022[data_2022$median_listing_price<2000000,]
+data_2021_ro <- data_2021[data_2021$median_listing_price<2000000,]
+boxplot(data_2022_ro$median_listing_price)
+boxplot(data_2021_ro$median_listing_price)
+
+
+# %of price increase among all the hot neighborhoods
+# Compute the analysis of variance
+aov_increase <- aov(median_listing_price_per_square_foot_mm ~ postal_code, data = data_dc_hot[data_dc_hot$median_listing_price_per_square_foot_mm>0,])
+aov_decrease <- aov(median_listing_price_per_square_foot_mm ~ postal_code, data = data_dc_hot[data_dc_hot$median_listing_price_per_square_foot_mm<0,])
+
+```
+
+## hottest 
+```{r}
+hotness_l2y <- hotness_l2y[c('cbsa_title', 'hotness_score', 'hotness_score')]
+hotness_l2y_agg <- hotness_l2y %>% group_by(cbsa_title) %>%
+  summarise(mean_hotness = mean(hotness_score)
+  )
+
+hotness_l2y_agg_sort <- hotness_l2y_agg[order(hotness_l2y_agg$mean_hotness, decreasing=TRUE),]
+hotness_top50 <- hotness_l2y_agg_sort[c(1:50),]
+hotness_top50$cbsa_title <- tolower(hotness_top50$cbsa_title)
+
+```
+
+## pricing distributions of 2022 vs. 2021 among top 50 hottest metros
+```{r}
+# 2022
+data_2022_ro$cbsa_name <- tolower(data_2022_ro$zip_name)
+data_2022_top50 <- data_2022_ro[data_2022_ro$cbsa_name %in% hotness_cbsa_list,]
+
+# 2021
+data_2021_ro$cbsa_name <- tolower(data_2021_ro$zip_name)
+data_2021_top50 <- data_2021_ro[data_2021_ro$cbsa_name %in% hotness_cbsa_list,]
+
+h_top50_2022 <- hist(data_2022_top50$median_listing_price, xlim=c(0, 1500000), breaks=15)
+h_top50_2021 <- hist(data_2021_top50$median_listing_price, xlim=c(0, 1500000), breaks=15)
+h_top50_2022$density <- h_top50_2022$counts/sum(h_2022$counts)*100
+h_top50_2021$density <- h_top50_2021$counts/sum(h_2021$counts)*100
+
+plot(h_top50_2022, ylim=c(0,0.2), freq=FALSE, col='grey')
+plot(h_top50_2021, ylim=c(0,0.2), freq=FALSE, col='grey')
+```
+
+## Hotness vs. unit price
+```{r}
+# load data sets
+data <- read.csv('data/RDC_Inventory_Core_Metrics_Zip_History.csv')
+hotness <- read.csv('data/RDC_Inventory_Hotness_Metrics_Zip_History.csv')
+# hotness
+hotness_dc <- hotness[hotness['zip_name']=='washington, dc', c('month_date_yyyymm','zip_name','postal_code','hotness_score','median_days_on_market','median_days_on_market_yy',
+'supply_score','demand_score','median_listing_price','median_listing_price_yy')]
+# pricing
+data_dc <- data[data['zip_name']=='washington dc',c('month_date_yyyymm','postal_code','new_listing_count','price_increased_count','price_reduced_count',
+'pending_listing_count','median_listing_price_per_square_foot','median_square_feet','pending_ratio')]
+
+write.csv(data_dc_hot_inventory_l2y, 'C:/Users/GTU/ANLY_511_Probablity_Statistics/Project/data_dc_hot_inventory_l2y.csv', row.names=FALSE)
+hot <- data_dc_hot_inventory[data_dc_hot_inventory$postal_code %in% c(20003, 20005, 20010, 20011, 20015, 20016,20017,20018),]
+hot_ro <- hot[hot$median_listing_price_per_square_foot<2000,]
+nonhot <- data_dc_hot_inventory[!data_dc_hot_inventory$postal_code %in% c(20003, 20005, 20010, 20011, 20015, 20016,20017,20018),]
+nonhot_ro <- nonhot[nonhot$median_listing_price_per_square_foot<2000,]
+
+t.test(as.numeric(unlist(hot_ro)),
+ as.numeric(unlist(nonhot_ro)), 
+    conf.level = .9,
+   alternative = 'greater' )
+```
+
