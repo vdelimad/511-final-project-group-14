@@ -1,0 +1,152 @@
+---
+title: "Untitled"
+output: html_document
+date: "2022-11-30"
+---
+
+```{r}
+library(dplyr)
+library(tidyr)
+library(splitstackshape)
+rdc <- read.csv("RDC_Inventory_Core_Metrics_State_History.csv")
+```
+
+```{r}
+rdc1=rdc[rdc$state_id == 'DC',]
+head(rdc1)
+```
+```{r}
+boxplot(median_listing_price~median_days_on_market,data=rdc1, 
+   xlab="median days on market", ylab="median listng price")
+```
+```{r}
+plot(rdc1$active_listing_count, rdc1$price_increased_count, 
+   xlab="active listing count ", ylab="price increased count", pch=19)
+```
+
+
+
+```{r}
+rdc1$median_listing_price= ifelse(rdc1$median_listing_price >=650000, "greater than 650k",
+                          ifelse(rdc1$median_listing_price >=600000, "greater than 600k",
+                          ifelse(rdc1$median_listing_price >=550000, "greater than 550k", 
+                          ifelse(rdc1$median_listing_price >=500000, "greater than 500k", "other"))))
+```
+
+```{r}
+rdc1$median_days_on_market= ifelse(rdc1$median_days_on_market >=60, "longer than 60",
+                          ifelse(rdc1$median_days_on_market >=50, "longer than 50",
+                          ifelse(rdc1$median_days_on_market >=40, "longer than 40", 
+                          ifelse(rdc1$median_days_on_market >=30, "longer than 30", "less than 30"))))
+```
+
+```{r}
+rdc1$median_square_feet= ifelse(rdc1$median_square_feet >=1400, "more than 1400",
+                          ifelse(rdc1$median_square_feet >=1300, "more than 1300",
+                          ifelse(rdc1$median_square_feet >=1200, "more than 1200", 
+                          ifelse(rdc1$median_square_feet >=1100, "longer than 1100", "less than 1100"))))
+```
+
+
+```{r}
+rdc1$price_increased_count= ifelse(rdc1$price_increased_count >=40, "more than 40",
+                          ifelse(rdc1$price_increased_count >=30, "more than 30",
+                          ifelse(rdc1$price_increased_count >=20, "more than 20", 
+                          ifelse(rdc1$price_increased_count >=10, "more than 10", "less than 10"))))
+```
+
+```{r}
+rdc1$active_listing_count= ifelse(rdc1$active_listing_count >=2000, "more than 2000",
+                          ifelse(rdc1$active_listing_count >=1700, "more than 1700",
+                          ifelse(rdc1$active_listing_count >=1400, "more than 1400", 
+                          ifelse(rdc1$active_listing_count >=1100, "more than 1100", "less than 1100"))))
+```
+
+```{r}
+A=table(rdc1$median_listing_price,rdc1$median_days_on_market)
+A
+```
+
+```{r}
+myX2.2 = function(A){
+  r <- rowSums(A)
+  c <- colSums(A)
+  N = sum(A)
+  expected <- outer(r,c)/N
+  return(sum((A-expected)^2/expected))
+}
+```
+
+```{r}
+x2=myX2.2(A)
+pchisq(x2, df = (4-1)*(5-1), lower.tail = F)
+```
+```{r}
+# load packages
+library(ggstatsplot)
+library(ggplot2)
+
+# plot
+ggbarstats(
+  data = rdc1,
+  x = median_listing_price,
+  y = median_days_on_market
+) +
+  labs(caption = NULL)
+```
+```{r}
+B=table(rdc1$median_listing_price,rdc1$median_square_feet)
+B
+```
+
+
+
+```{r}
+x2=myX2.2(B)
+pchisq(x2, df = (4-1)*(5-1), lower.tail = F)
+```
+
+```{r}
+ggbarstats(
+  data = rdc1,
+  x = median_listing_price,
+  y = median_square_feet
+) +
+  labs(caption = NULL)
+```
+```{r}
+C=table(rdc1$median_days_on_market,rdc1$price_increased_count)
+C
+```
+
+```{r}
+x2=myX2.2(C)
+pchisq(x2, df = (4-1)*(5-1), lower.tail = F)
+```
+
+```{r}
+ggbarstats(
+  data = rdc1,
+  x = price_increased_count,
+  y = median_days_on_market
+) +
+  labs(caption = NULL)
+```
+```{r}
+D=table(rdc1$active_listing_count,rdc1$price_increased_count)
+D
+```
+
+```{r}
+x2=myX2.2(C)
+pchisq(x2, df = (4-1)*(5-1), lower.tail = F)
+```
+```{r}
+ggbarstats(
+  data = rdc1,
+  x = price_increased_count,
+  y = active_listing_count
+) +
+  labs(caption = NULL)
+```
+
